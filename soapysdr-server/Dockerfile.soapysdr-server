@@ -1,0 +1,79 @@
+FROM hostname.lan.home:65432/ubuntu:jammy AS runtimebaseimage
+LABEL maintainer littlewing
+
+RUN apt update && \
+ apt --assume-yes --no-install-recommends full-upgrade \
+  ca-certificates \
+  libconfig++-dev+ \
+  libmp3lame-dev+ \
+  libshout3-dev+ \
+  libfftw3-dev+ \
+  libusb-1.0-0-dev+ \
+  liblimesuite-dev+ \
+  librtlsdr-dev+ \
+  libairspy-dev+
+RUN rm --recursive --force /var/lib/apt/lists/*
+
+FROM runtimebaseimage AS buildimage
+
+RUN apt update && \
+ apt --assume-yes --no-install-recommends full-upgrade \
+  git \
+  build-essential \
+  cmake
+RUN rm --recursive --force /var/lib/apt/lists/*
+
+FROM buildimage AS sorpysdr
+ARG SOAPYSDR_REPOSITORY="pothosware"
+ARG SOAPYSDR_PROJECT="SoapySDR"
+ARG SOAPYRTLSDR_PROJECT="SoapyRTLSDR"
+ARG SOAPYAIRSPY_PROJECT="SoapyAirspy"
+ARG SOAPYREMOTE_PROJECT="SoapyRemote"
+ARG SOAPYSDR_BRANCH="master"
+ARG LIMESUITE_REPOSITORY="myriadrf"
+ARG LIMESUITE_PROJECT="LimeSuite"
+ARG LIMESUITE_BRANCH="master"
+
+RUN git clone --depth 1 --branch ${SOAPYSDR_BRANCH} "https://github.com/${SOAPYSDR_REPOSITORY}/${SOAPYSDR_PROJECT}.git"
+RUN mkdir --parent /${SOAPYSDR_PROJECT}/build
+WORKDIR /${SOAPYSDR_PROJECT}/build
+RUN cmake ../ -DCMAKE_BUILD_TYPE=Release && make all && make test && make install
+WORKDIR /
+RUN rm --recursive --force /${SOAPYSDR_PROJECT}
+
+RUN git clone --depth 1 --branch ${SOAPYSDR_BRANCH} "https://github.com/${SOAPYSDR_REPOSITORY}/${SOAPYRTLSDR_PROJECT}.git"
+RUN mkdir --parent /${SOAPYRTLSDR_PROJECT}/build
+WORKDIR /${SOAPYRTLSDR_PROJECT}/build
+RUN cmake ../ -DCMAKE_BUILD_TYPE=Release && make all && make install
+WORKDIR /
+RUN rm --recursive --force /${SOAPYRTLSDR_PROJECT}
+
+RUN git clone --depth 1 --branch ${SOAPYSDR_BRANCH} "https://github.com/${SOAPYSDR_REPOSITORY}/${SOAPYAIRSPY_PROJECT}.git"
+RUN mkdir --parent /${SOAPYAIRSPY_PROJECT}/build
+WORKDIR /${SOAPYAIRSPY_PROJECT}/build
+RUN cmake ../ -DCMAKE_BUILD_TYPE=Release && make all && make install
+WORKDIR /
+RUN rm --recursive --force /${SOAPYAIRSPY_PROJECT}
+
+RUN git clone --depth 1 --branch ${SOAPYSDR_BRANCH} "https://github.com/${SOAPYSDR_REPOSITORY}/${SOAPYREMOTE_PROJECT}.git"
+RUN mkdir --parent /${SOAPYREMOTE_PROJECT}/build
+WORKDIR /${SOAPYREMOTE_PROJECT}/build
+RUN cmake ../ -DCMAKE_BUILD_TYPE=Release && make all && make install
+WORKDIR /
+RUN rm --recursive --force /${SOAPYREMOTE_PROJECT}
+
+RUN git clone --depth 1 --branch ${LIMESUITE_BRANCH} "https://github.com/${LIMESUITE_REPOSITORY}/${LIMESUITE_PROJECT}.git"
+RUN mkdir --parent /${LIMESUITE_PROJECT}/build
+WORKDIR /${LIMESUITE_PROJECT}/build
+RUN cmake ../ -DCMAKE_BUILD_TYPE=Release && make all && make install
+WORKDIR /
+RUN rm --recursive --force /${LIMESUITE_PROJECT}
+
+
+FROM runtimebaseimage AS runtimeimage
+COPY --from=sorpysdr /usr/local /usr/local
+RUN ldconfig
+
+VOLUME ["/var/log", "/etc/localtime:ro"]
+ENTRYPOINT ["SoapySDRServer"]
+CMD ["--bind=[::]:62000"]

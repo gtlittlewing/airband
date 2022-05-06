@@ -1,0 +1,151 @@
+services:
+  soapysdr-server:
+    env_file: 
+      - ./.env
+      - ./${APPNAME_SERVER}/${APPNAME_SERVER}.env
+    image: ${REGISTRY}/${MAINTAINER}/${APPNAME_SERVER}:${TAG}
+    build:
+      context:  ./${APPNAME_SERVER}/
+      dockerfile: Dockerfile.${APPNAME_SERVER}
+      args:
+        - SOAPYSDR_REPOSITORY=pothosware
+        - SOAPYSDR_PROJECT=SoapySDR
+        - SOAPYRTLSDR_PROJECT=SoapyRTLSDR
+        - SOAPYAIRSPY_PROJECT=SoapyAirspy
+        - SOAPYREMOTE_PROJECT=SoapyRemote
+        - SOAPYSDR_BRANCH=master
+        - LIMESUITE_REPOSITORY=myriadrf
+        - LIMESUITE_PROJECT=LimeSuite
+        - LIMESUITE_BRANCH=master
+    container_name: ${APPNAME_SERVER}
+    hostname: ${APPNAME_SERVER}
+    restart: always
+    volumes:
+      - type: bind
+        source: /var/log
+        target: /var/log
+      - type: bind
+        source: /etc/localtime
+        target: /etc/localtime
+        read_only: true
+    devices:
+      - /dev/bus/usb
+    networks:
+      - airband-containers
+    command:
+      - "--bind=[::]:${LISTENPORT_SERVER}"
+
+  rtlsdr-airband:
+    env_file: 
+      - ./.env
+      - ./${APPNAME_CLIENT}/${APPNAME_CLIENT}.env
+    image: ${REGISTRY}/${MAINTAINER}/${APPNAME_CLIENT}:${TAG}
+    build:
+      context:  ./${APPNAME_CLIENT}/
+      dockerfile: Dockerfile.${APPNAME_CLIENT}
+      args:
+        - RTLSDR_Airband_REPOSITORY=szpajder
+        - RTLSDR_Airband_PROJECT=RTLSDR-Airband
+        - RTLSDR_Airband_BRANCH=master
+    container_name: ${APPNAME_CLIENT}
+    hostname: ${APPNAME_CLIENT}
+    restart: always
+    configs:
+      - source: rtlsdr-airband_config
+        target: /usr/local/etc/${CONFIG_CLIENT}
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+    volumes:
+      - type: bind
+        source: /var/log
+        target: /var/log
+      - type: bind
+        source: ${ARCHIVEFILE_LOCATION_CLIENT}
+        target: /var/lib/rtlsdr-airband/archive
+      - type: bind
+        source: /etc/localtime
+        target: /etc/localtime
+        read_only: true
+    networks:
+      - airband-containers
+    depends_on: 
+      - soapysdr-server
+  #    - ffmpeg-transrelay-server
+
+# これ↓使ってエンコードするなら、rtlsdr-airbandのrtl_airband.confに、udp_streamで出力してこれ↓で受ける設定が要るよ
+# でも負荷高すぎる割に１ストリームモノラル音声しか得られないんで、無理して使う必要はないと思う……
+  # ffmpeg-transrelay-server:
+  #   env_file: 
+  #     - ./.env
+  #     - ./${APPNAME_ENCODER}/${APPNAME_ENCODER}.env
+  #   image: ${REGISTRY}/${MAINTAINER}/${APPNAME_ENCODER}:${TAG}
+  #   build:
+  #     context:  ./${APPNAME_ENCODER}/
+  #     dockerfile: Dockerfile.${APPNAME_ENCODER}
+  #   container_name: ${APPNAME_ENCODER}
+  #   hostname: ${APPNAME_ENCODER}
+  #   restart: always
+  #   environment:
+  #     - UDP_PORT=${LISTENPORT_ENCODER}
+  #     - ICE_GENRE=Air Traffic Control Communications
+  #     - ICE_NAME=OKA/ROAH ATIS (VHF)
+  #     - ICE_DESCRIPTION=Naha Airport ATIS VHF 127.8MHz
+  #     - ICE_MOUNTPOINT=OKA-ATIS
+  #     - ICE_PORT=${LISTENPORT_ENDPOINT}
+  #   volumes:
+  #     - type: bind
+  #       source: /var/log
+  #       target: /var/log
+  #     - type: bind
+  #       source: /etc/localtime
+  #       target: /etc/localtime
+  #       read_only: true
+  #   networks:
+  #     - airband-containers
+  #   depends_on:
+  #     - icecast2-server
+
+  icecast2-server:
+    env_file: 
+      - ./.env
+      - ./${APPNAME_ENDPOINT}/${APPNAME_ENDPOINT}.env
+    image: ${REGISTRY}/${MAINTAINER}/${APPNAME_ENDPOINT}:${TAG}
+    build:
+      context:  ./${APPNAME_ENDPOINT}/
+      dockerfile: Dockerfile.${APPNAME_ENDPOINT}
+    container_name: ${APPNAME_ENDPOINT}
+    hostname: ${APPNAME_ENDPOINT}
+    restart: always
+    configs:
+      - source: icecast2-server_config
+        target: /etc/icecast2/${CONFIG_ENDPOINT}
+    volumes:
+      - type: bind
+        source: /var/log
+        target: /var/log
+      - type: bind
+        source: /etc/localtime
+        target: /etc/localtime
+        read_only: true
+    ports:
+      - host_ip: 0.0.0.0
+        target: ${LISTENPORT_ENDPOINT}
+        published: ${PUBLISHPORT_ENDPOINT}
+        protocol: tcp
+    networks:
+      - airband-containers
+
+networks:
+  airband-containers:
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: ${IPv4_SUBNET}
+        - subnet: ${IPv6_SUBNET}
+
+configs:
+  rtlsdr-airband_config:
+    file: ./${APPNAME_CLIENT}/config/${CONFIG_CLIENT}
+  icecast2-server_config:
+    file: ./${APPNAME_ENDPOINT}/config/${CONFIG_ENDPOINT}

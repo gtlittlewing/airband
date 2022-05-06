@@ -1,0 +1,15 @@
+FROM hostname.lan.home:65432/ubuntu:jammy
+LABEL maintainer littlewing
+
+RUN apt update && \
+ apt --assume-yes --no-install-recommends full-upgrade \
+  sudo \
+  icecast2
+RUN rm --recursive --force /var/lib/apt/lists/*
+
+COPY config/icecast.xml /etc/icecast2/
+
+VOLUME ["/var/log", "/etc/localtime:ro"]
+EXPOSE 61000/tcp
+ENTRYPOINT ["sudo", "--preserve-env", "--user=icecast2", "icecast2"]
+CMD ["-c", "/etc/icecast2/icecast.xml"]
